@@ -460,6 +460,51 @@ fn arrays_do_not_spill_in_tables() {
 }
 
 #[test]
+fn a_dynamic_array_of_one_value_in_a_table_is_not_spill() {
+    // A FILTER in a table column that matches one row returns a 1 x 1 array. Since #1491 that
+    // anchors a spill range, and the table check turned it into #SPILL! (#2335). Excel shows the
+    // value: only an array larger than one cell can't spill in a table.
+    let mut t = T::new();
+    t.wb.sheet_mut(0).unwrap().tables.push(gridcraft_model::Table {
+        id: 1,
+        name: "Table1".into(),
+        range: gridcraft_core::RangeRef::parse("B3:C6").unwrap(),
+        header_row: true,
+        totals_row: false,
+        columns: vec![],
+        style: String::new(),
+        banded_rows: false,
+        banded_cols: false,
+        first_col: false,
+        last_col: false,
+        filter_button: false,
+        filter: vec![],
+        table_type: None,
+        connection_id: None,
+    });
+    for (i, owner) in ["South", "East", "North"].iter().enumerate() {
+        t.set(&format!("F{}", i + 1), &(i + 1).to_string());
+        t.set(&format!("G{}", i + 1), owner);
+    }
+    t.set("B4", "2");
+    t.set("C4", "=FILTER(G1:G3,F1:F3=B4)");
+    t.set("C5", "=SEQUENCE(1)");
+    t.set("H1", "=C4&C5");
+    assert_eq!(t.get("C4"), Value::from("East"));
+    assert_eq!(t.num("C5"), 1.0);
+    assert_eq!(t.get("H1"), Value::from("East1"));
+    // Editing what it reads recalculates it in place.
+    t.set("B4", "3");
+    assert_eq!(t.get("C4"), Value::from("North"));
+    // A full recalculation (opening a file, Calculate Now) agrees.
+    t.calc.recalc_all(&mut t.wb);
+    assert_eq!((t.get("C4"), t.num("C5")), (Value::from("North"), 1.0));
+    // An array that grows past one cell is #SPILL! again.
+    t.set("C5", "=SEQUENCE(2)");
+    assert_eq!(t.get("C5"), Value::Error(CellError::Spill));
+}
+
+#[test]
 fn ifs_and_lazy() {
     let mut t = T::new();
     t.set("A1", "5");
