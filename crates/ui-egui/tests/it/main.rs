@@ -20,6 +20,7 @@ mod contextual_ribbon_tab;
 mod control_timeout;
 mod dialog_button_row;
 mod dialog_confirm;
+mod dialog_enter_error;
 mod dialog_focus;
 mod dialog_move;
 mod drag_cursor;

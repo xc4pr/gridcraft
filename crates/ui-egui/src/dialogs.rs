@@ -1511,7 +1511,7 @@ fn paste_special(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog, confirm:
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let ok = ui.add(egui::Button::new(egui::RichText::new(format!("   {}   ", lang.tr("OK"))).color(Color32::WHITE)).fill(t.accent));
-            if ok.clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
+            if ok.clicked() || take_enter(ui) {
                 *confirm = true;
             }
             if ui.button(format!(" {} ", lang.tr("Cancel"))).clicked() {
@@ -1586,6 +1586,23 @@ fn paste_special_shortcuts(d: &mut Dialog, ctx: &egui::Context) {
     });
 }
 
+/// Whether Enter was pressed this frame for this dialog, taking the press out of the frame's input.
+/// The message box drawn later in the same frame closes on Enter, so an error from the action Enter
+/// ran (a sheet name that is taken, a wrong password) was dismissed before it was ever shown, while
+/// clicking OK showed it (#2189). While that message box is up, Enter is its OK and is left to it.
+fn take_enter(ui: &egui::Ui) -> bool {
+    if !ui.ctx().memory(|m| m.allows_interaction(ui.layer_id())) {
+        return false;
+    }
+    ui.input_mut(|i| {
+        let pressed = i.key_pressed(Key::Enter);
+        if pressed {
+            i.events.retain(|e| !matches!(e, egui::Event::Key { key: Key::Enter, .. }));
+        }
+        pressed
+    })
+}
+
 fn ok_cancel(ui: &mut egui::Ui, confirm: &mut bool, open: &mut bool) {
     ui.add_space(8.0);
     // A row as tall as the buttons: a right-to-left layout straight in the window takes all the
@@ -1597,7 +1614,7 @@ fn ok_cancel(ui: &mut egui::Ui, confirm: &mut bool, open: &mut bool) {
                 egui::Button::new(egui::RichText::new(format!("   {}   ", lang.tr("OK"))).color(Color32::WHITE))
                     .fill(crate::theme::Tokens::get(ui.ctx()).accent),
             );
-            if ok.clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
+            if ok.clicked() || take_enter(ui) {
                 *confirm = true;
             }
             if ui.button(format!(" {} ", lang.tr("Cancel"))).clicked() {
@@ -2146,7 +2163,7 @@ fn find(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog) {
             p["all"] = json!(true);
             d.result = app.run("edit.find", p).ok();
         }
-        if ui.button("Find Next").clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
+        if ui.button("Find Next").clicked() || take_enter(ui) {
             if let Err(e) = app.run("edit.find", base.clone()) {
                 app.message = Some(("Find and Replace".into(), crate::clean_error(&e)));
             }
@@ -2679,7 +2696,7 @@ fn command_search(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog, confirm
             r.on_hover_text(id);
         }
     });
-    if ui.input(|i| i.key_pressed(Key::Enter)) {
+    if take_enter(ui) {
         *confirm = true;
     }
     if *confirm && let Some((id, ..)) = cmds.get(d.list_index) {
