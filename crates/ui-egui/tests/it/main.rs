@@ -42,6 +42,7 @@ mod header_column_drag;
 mod host_chrome;
 mod hyperlink_ctrl_click;
 mod in_cell_editor_size;
+mod in_cell_editor_text_position;
 mod in_cell_editor_wrap;
 mod insert_copied_cells;
 mod interaction;

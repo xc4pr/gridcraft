@@ -3134,16 +3134,29 @@ fn in_cell_editor(app: &mut SheetApp, ui: &mut egui::Ui, geo: &Geo, sh: &Sheet, 
     // Wrap Text: the editor keeps the column's width and wraps, growing down as Excel's does.
     // Otherwise it widens to the text's one-line width.
     let wrap = st.align.wrap;
-    let (w, h) = if wrap {
+    let (w, h, text_h) = if wrap {
         // The field wraps at the width it is given (the editor's less its 2 px inset a side): its
         // frame is `Frame::NONE`, so no text margin is taken off.
         let wrapped = ui.painter().layout(ed.text.clone(), font.clone(), Color32::BLACK, (rect.width() - 4.0).max(1.0));
-        (rect.width(), (wrapped.size().y.max(size * 1.3 * lines) + 4.0).max(rect.height()))
+        (rect.width(), (wrapped.size().y.max(size * 1.3 * lines) + 4.0).max(rect.height()), wrapped.size().y)
     } else {
-        let text_w = ui.painter().layout_no_wrap(ed.text.clone(), font.clone(), Color32::BLACK).size().x;
+        let galley = ui.painter().layout_no_wrap(ed.text.clone(), font.clone(), Color32::BLACK);
         // Excel keeps the cell's height for one line and only grows for extra lines.
         let h = if lines > 1.0 { (size * 1.3 * lines + 4.0).max(rect.height()) } else { rect.height() };
-        (editor_width(text_w, rect.width(), size).min(geo.cells.right() - rect.left()), h)
+        (editor_width(galley.size().x, rect.width(), size).min(geo.cells.right() - rect.left()), h, galley.size().y)
+    };
+    // The text stays where the cell shows it, as in Excel: a bottom-aligned (the default) or
+    // centred value in a tall row doesn't jump to the top of the cell when editing starts (#2334).
+    // The grid lays out wrapped and justified text with its own padding. Text taller than the
+    // cell starts at its top, as before.
+    let rotated = st.align.rotation != 0 && st.align.rotation != 255;
+    let wrapped_layout = !rotated && (wrap || st.align.h == HAlign::Justify);
+    let text_top = if wrapped_layout && text_h + 3.0 * geo.z <= rect.height() {
+        wrapped_cell_text_y(st.align.v, rect, text_h, geo.z)
+    } else if !wrapped_layout && lines <= 1.0 {
+        cell_text_y(st.align.v, rect, text_h, geo.z)
+    } else {
+        rect.top() + 1.0
     };
     // Grows to the left on a right-to-left sheet.
     let erect = geo.mirror_rect(Rect::from_min_size(rect.min, vec2(w, h)));
@@ -3161,7 +3174,8 @@ fn in_cell_editor(app: &mut SheetApp, ui: &mut egui::Ui, geo: &Geo, sh: &Sheet, 
     painter.rect_filled(erect, 0.0, fill);
     painter.rect_stroke(erect.expand(1.0), 0.0, Stroke::new(2.0, Tokens::get(ui.ctx()).sel_border), StrokeKind::Middle);
     let id = egui::Id::new("gridcraft.cell_editor");
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(erect.shrink2(vec2(2.0, 1.0))));
+    let field = Rect::from_min_max(pos2(erect.left() + 2.0, text_top), pos2(erect.right() - 2.0, (erect.bottom() - 1.0).max(text_top)));
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(field));
     child.set_clip_rect(clip);
     // The theme's caret is meant for the UI chrome and vanishes on some fills (and, in the dark
     // theme, on the white paper): pick black or white against the fill, like Excel.
